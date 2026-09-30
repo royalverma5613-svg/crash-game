@@ -9,10 +9,10 @@ from email.mime.text import MIMEText
 app = Flask(__name__)
 
 # ==========================================
-# 📧 EMAIL SETTINGS (Apni Details Dalein)
+# 📧 GMAIL SMTP CONFIGURATION (Set with your App Password)
 # ==========================================
-SENDER_EMAIL = "your_email@gmail.com"
-SENDER_PASSWORD = "your_app_password"
+SENDER_EMAIL = "your_email@gmail.com"  # Yahan apna Gmail dalein
+SENDER_PASSWORD = "mfoq cjkt eyub tuvu"  # Aapka generated App password set kar diya hai
 
 # ==========================================
 # 💾 DATABASE SETUP
@@ -31,12 +31,7 @@ otp_storage = {}
 # ==========================================
 # ⚙ DUAL GAME ENGINE (CRASH & AVIATOR)
 # ==========================================
-# Bot settings for fake users
-SETTINGS = {
-    "crash_active_users": 10000,
-    "aviator_active_users": 100
-}
-
+SETTINGS = {"crash_active_users": 10000, "aviator_active_users": 100}
 games = {
     "crash": {"status": "waiting", "multiplier": 1.0, "next_crash": 2.50, "time_left": 12.0, "history": [], "fake_bets": [], "total_amount": 0},
     "aviator": {"status": "waiting", "multiplier": 1.0, "next_crash": 3.00, "time_left": 8.0, "history": [], "fake_bets": [], "total_amount": 0}
@@ -44,34 +39,19 @@ games = {
 
 def generate_fake_bets(num_users):
     bets = []
-    # Server lag na ho isliye screen par dikhane ke liye sirf top 30-40 bets generate karenge
     display_users = min(num_users, 40) 
     total_amt = 0
-    
-    for _ in range(num_users):
-        amt = random.choice([20, 50, 100, 200, 500, 1000, 5000])
-        total_amt += amt
-        
+    for _ in range(num_users): total_amt += random.choice([20, 50, 100, 200, 500, 1000, 5000])
     for _ in range(display_users):
-        bets.append({
-            "uid": f"{random.randint(10,99)}***{random.randint(10,99)}",
-            "bet": random.choice([20, 50, 100, 200, 500, 1000]),
-            "cashout_target": round(random.uniform(1.05, 5.50), 2),
-            "cashed_out": False,
-            "profit": 0,
-            "stopped_at": 0
-        })
+        bets.append({"uid": f"{random.randint(10,99)}***{random.randint(10,99)}", "bet": random.choice([20, 50, 100, 200, 500, 1000]), "cashout_target": round(random.uniform(1.05, 5.50), 2), "cashed_out": False, "profit": 0, "stopped_at": 0})
     return bets, total_amt
 
 def game_thread(game_name, wait_time):
     global games
     while True:
-        # WAITING PHASE
         games[game_name]["status"] = "waiting"
         games[game_name]["multiplier"] = 1.00
         games[game_name]["next_crash"] = round(random.uniform(1.05, 10.50), 2)
-        
-        # Generate Fake Bets based on bot settings
         users_count = SETTINGS[f"{game_name}_active_users"]
         games[game_name]["fake_bets"], games[game_name]["total_amount"] = generate_fake_bets(users_count)
         
@@ -79,107 +59,112 @@ def game_thread(game_name, wait_time):
             games[game_name]["time_left"] = round(i / 10.0, 1)
             time.sleep(0.1)
 
-        # FLYING PHASE
         games[game_name]["status"] = "flying"
         current_mult = 1.00
         while current_mult < games[game_name]["next_crash"]:
             current_mult += (0.01 * current_mult) + 0.01 
             games[game_name]["multiplier"] = round(current_mult, 2)
-            
-            # Fake users cashing out dynamically
             for b in games[game_name]["fake_bets"]:
                 if not b["cashed_out"] and current_mult >= b["cashout_target"]:
-                    b["cashed_out"] = True
-                    b["stopped_at"] = b["cashout_target"]
-                    b["profit"] = round(b["bet"] * b["cashout_target"], 2)
+                    b["cashed_out"] = True; b["stopped_at"] = b["cashout_target"]; b["profit"] = round(b["bet"] * b["cashout_target"], 2)
             time.sleep(0.05)
 
-        # CRASHED PHASE
         games[game_name]["status"] = "crashed"
         games[game_name]["multiplier"] = games[game_name]["next_crash"]
-        
         games[game_name]["history"].insert(0, games[game_name]["next_crash"])
-        if len(games[game_name]["history"]) > 6:
-            games[game_name]["history"].pop()
-            
+        if len(games[game_name]["history"]) > 6: games[game_name]["history"].pop()
         time.sleep(4)
 
-# Start both games independently
 threading.Thread(target=game_thread, args=("crash", 12.0), daemon=True).start()
 threading.Thread(target=game_thread, args=("aviator", 8.0), daemon=True).start()
 
-
 # ==========================================
-# 🌐 API ENDPOINTS (Auth, Settings, Game)
+# 🌐 API ENDPOINTS (REAL OTP & AUTH)
 # ==========================================
-@app.route('/api/bot_settings', methods=['POST'])
-def bot_settings():
+@app.route('/api/send_otp', methods=['POST'])
+def send_otp():
     data = request.json
-    if "crash" in data: SETTINGS["crash_active_users"] = int(data["crash"])
-    if "aviator" in data: SETTINGS["aviator_active_users"] = int(data["aviator"])
-    return jsonify({"status": "success"})
+    email = data.get('email')
+    
+    if not email or "@" not in email:
+        return jsonify({"status": "error", "message": "Invalid email address"})
+
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE email=?", (email,))
+    if c.fetchone():
+        conn.close()
+        return jsonify({"status": "error", "message": "Email already registered. Please login!"})
+    conn.close()
+
+    otp = str(random.randint(1000, 9999))
+    otp_storage[email] = otp
+
+    try:
+        msg = MIMEText(f"Welcome to Super100x!\n\nYour Verification Code is: {otp}\n\nDo not share this code.")
+        msg['Subject'] = 'Super100x - Verification OTP'
+        msg['From'] = SENDER_EMAIL
+        msg['To'] = email
+
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.send_message(msg)
+        server.quit()
+        return jsonify({"status": "success", "message": "OTP sent! Check your Gmail inbox."})
+    except Exception as e:
+        print(f"SMTP ERROR: {e}")
+        return jsonify({"status": "error", "message": "Failed to send email. Check SMTP settings."})
+
+@app.route('/api/verify_otp', methods=['POST'])
+def verify_otp():
+    data = request.json
+    email = data.get('email')
+    otp = data.get('otp')
+    
+    if email in otp_storage and otp_storage[email] == otp:
+        return jsonify({"status": "success", "message": "Email verified successfully!"})
+    return jsonify({"status": "error", "message": "Invalid or incorrect OTP!"})
+
+@app.route('/api/register', methods=['POST'])
+def register_user():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+    ref = data.get('ref', '')
+
+    uid = str(random.randint(1000000, 9999999))
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO users (email, password, uid, ref, balance) VALUES (?, ?, ?, ?, ?)", 
+              (email, password, uid, ref, 50.00))
+    conn.commit()
+    conn.close()
+    
+    if email in otp_storage: del otp_storage[email]
+    return jsonify({"status": "success", "message": "Account created! ₹50 Bonus added.", "uid": uid, "balance": 50.00})
+
+@app.route('/api/login', methods=['POST'])
+def login_user():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+    conn = sqlite3.connect('users.db'); c = conn.cursor()
+    c.execute("SELECT uid, balance FROM users WHERE email=? AND password=?", (email, password))
+    user = c.fetchone(); conn.close()
+    if user: return jsonify({"status": "success", "message": "Login successful!", "uid": user[0], "balance": user[1]})
+    return jsonify({"status": "error", "message": "Incorrect Email or Password!"})
 
 @app.route('/api/game_state/<game_name>')
 def get_state(game_name):
     if game_name in games:
-        # Also return active user count
         data = dict(games[game_name])
         data["active_users"] = SETTINGS[f"{game_name}_active_users"]
         return jsonify(data)
     return jsonify({"error": "game not found"})
 
-@app.route('/api/change_password', methods=['POST'])
-def change_pass():
-    data = request.json
-    email = data.get('email')
-    old_p = data.get('old_pass')
-    new_p = data.get('new_pass')
-    
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT password FROM users WHERE email=?", (email,))
-    row = c.fetchone()
-    
-    if row and row[0] == old_p:
-        c.execute("UPDATE users SET password=? WHERE email=?", (new_p, email))
-        conn.commit()
-        conn.close()
-        return jsonify({"status": "success", "message": "Password changed successfully!"})
-    conn.close()
-    return jsonify({"status": "error", "message": "Incorrect old password."})
-
-# (Keep /api/send_otp, /api/register, /api/login SAME AS BEFORE. Mapped briefly for space)
-@app.route('/api/send_otp', methods=['POST'])
-def send_otp():
-    data = request.json; email = data.get('email'); otp = str(random.randint(1000, 9999)); otp_storage[email] = otp
-    try:
-        msg = MIMEText(f"Your OTP is: {otp}"); msg['Subject'] = 'Super100x Registration OTP'; msg['From'] = SENDER_EMAIL; msg['To'] = email
-        server = smtplib.SMTP('smtp.gmail.com', 587); server.starttls(); server.login(SENDER_EMAIL, SENDER_PASSWORD); server.send_message(msg); server.quit()
-        return jsonify({"status": "success", "message": "OTP sent!"})
-    except: return jsonify({"status": "error", "message": "Failed to send email."})
-
-@app.route('/api/register', methods=['POST'])
-def register_user():
-    data = request.json; email = data.get('email'); otp = data.get('otp'); password = data.get('password')
-    if email not in otp_storage or otp_storage[email] != otp: return jsonify({"status": "error", "message": "Invalid OTP!"})
-    conn = sqlite3.connect('users.db'); c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE email=?", (email,))
-    if c.fetchone(): return jsonify({"status": "error", "message": "Email already registered!"})
-    uid = str(random.randint(1000000, 9999999))
-    c.execute("INSERT INTO users (email, password, uid, ref, balance) VALUES (?, ?, ?, ?, ?)", (email, password, uid, data.get('ref',''), 50.00))
-    conn.commit(); conn.close(); del otp_storage[email]
-    return jsonify({"status": "success", "message": "Account created! ₹50 Bonus.", "uid": uid, "balance": 50.00})
-
-@app.route('/api/login', methods=['POST'])
-def login_user():
-    data = request.json; email = data.get('email'); password = data.get('password')
-    conn = sqlite3.connect('users.db'); c = conn.cursor()
-    c.execute("SELECT uid, balance FROM users WHERE email=? AND password=?", (email, password)); user = c.fetchone(); conn.close()
-    if user: return jsonify({"status": "success", "message": "Login successful!", "uid": user[0], "balance": user[1]})
-    return jsonify({"status": "error", "message": "Incorrect Email or Password!"})
-
 # ==========================================
-# 🌐 FRONTEND UI HTML/JS
+# 🌐 FRONTEND HTML/JS
 # ==========================================
 HTML_PAGE = """
 <!DOCTYPE html>
@@ -195,28 +180,31 @@ HTML_PAGE = """
         
         .blue-header { background: #4a88ff; color: white; padding: 15px; text-align: center; font-size: 18px; font-weight: bold; position: sticky; top: 0; z-index: 50; display: flex; justify-content: space-between; align-items: center;}
         .red-header { background: #e74c3c; color: white; padding: 15px; text-align: center; font-size: 18px; font-weight: bold; position: sticky; top: 0; z-index: 50; display: flex; justify-content: space-between; align-items: center;}
-        .btn-blue { background: #4a88ff; color: white; width: 100%; padding: 12px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
-        .btn-red { background: #e74c3c; color: white; width: 100%; padding: 12px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
         
+        .btn-blue { background: #4a88ff; color: white; width: 100%; padding: 12px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .btn-blue:disabled { background: #a0c1ff; cursor: not-allowed; }
+        .btn-grey { background: #e0e0e0; color: #333; width: 100%; padding: 12px; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; }
+        .btn-grey:disabled { background: #f0f0f0; color: #aaa; cursor: not-allowed; }
+
         .card { background: white; margin: 15px; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .input-group { margin-bottom: 15px; }
-        .input-group input { width: 90%; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; }
+        .input-group label { font-size: 14px; font-weight: bold; color: #555; }
+        .input-group input { width: 90%; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 15px; margin-top: 5px; outline: none;}
         
         .auth-tabs { display: flex; justify-content: space-around; margin-bottom: 20px; border-bottom: 2px solid #eee; }
         .auth-tab { padding: 10px 20px; font-weight: bold; color: #888; cursor: pointer; }
         .auth-tab.active { color: #4a88ff; border-bottom: 3px solid #4a88ff; }
+        
         .bottom-nav { position: fixed; bottom: 0; width: 100%; background: white; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid #ddd; z-index: 100; }
         .nav-item { text-align: center; font-size: 12px; color: #888; cursor: pointer; width: 25%; }
         .nav-item.active { color: #4a88ff; font-weight: bold; }
 
         .custom-popup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
-        .popup-content { background: white; width: 80%; max-width: 300px; padding: 20px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); animation: pop 0.3s; }
-        @keyframes pop { from {transform: scale(0.8); opacity: 0;} to {transform: scale(1); opacity: 1;} }
+        .popup-content { background: white; width: 80%; max-width: 300px; padding: 20px; border-radius: 12px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
         .popup-btn { background: #4a88ff; color: white; padding: 8px 20px; border: none; border-radius: 6px; margin-top: 15px; font-weight: bold; cursor: pointer; }
 
-        /* Game Elements */
         .history-bar { display: flex; gap: 5px; padding: 10px; overflow-x: auto; background: white; border-bottom: 1px solid #eee;}
-        .pill { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; color: white; }
+        .pill { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; color: white; min-width:35px; text-align:center;}
         .pill.blue { background: #4a88ff; } .pill.green { background: #2ecc71; } .pill.red { background: #e74c3c; }
         .game-container { position: relative; width: 100%; height: 250px; background: #eef3f9; overflow: hidden; border-bottom: 2px solid #ddd;}
         .aviator-bg { background: #1a1a24; }
@@ -225,7 +213,6 @@ HTML_PAGE = """
         .timer-text { font-size: 50px; font-weight: bold; color: #333; margin: 0; line-height: 1;}
         .aviator-text { color: white; }
         
-        /* Live Bets Table */
         .live-bets { background: white; margin-top: 10px; padding: 15px; font-size: 14px; }
         .bets-header { display: flex; justify-content: space-between; font-weight: bold; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
         .bet-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f4f5f7; }
@@ -234,18 +221,16 @@ HTML_PAGE = """
         .bet-row div:last-child { text-align: right; }
         .text-green { color: #2ecc71; font-weight: bold; }
         .text-red { color: #e74c3c; font-weight: bold; }
-        
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
 
-    <!-- POPUP -->
     <div id="custom-popup" class="custom-popup">
         <div class="popup-content">
             <h3 id="popup-title" style="margin-top:0; color:#333;">Title</h3>
-            <p id="popup-message" style="color:#666; font-size:14px;">Message goes here.</p>
-            <div id="popup-inputs" style="display:none; margin: 15px 0;"></div>
-            <button class="popup-btn" id="popup-ok" onclick="closePopup()">OK</button>
+            <p id="popup-message" style="color:#666; font-size:14px;">Message</p>
+            <button class="popup-btn" onclick="closePopup()">OK</button>
         </div>
     </div>
 
@@ -257,19 +242,40 @@ HTML_PAGE = """
                 <div class="auth-tab active" id="tab-login" onclick="toggleAuth('login')">LOGIN</div>
                 <div class="auth-tab" id="tab-register" onclick="toggleAuth('register')">REGISTER</div>
             </div>
+            
             <div id="form-login">
                 <div class="input-group"><label>Email</label><br><input type="email" id="login-email"></div>
                 <div class="input-group"><label>Password</label><br><input type="password" id="login-pass"></div>
-                <button class="btn-blue" id="btn-login" onclick="verifyLogin()">LOGIN</button>
+                <button class="btn-blue" onclick="verifyLogin()">LOGIN</button>
             </div>
-            <div id="form-register" style="display:none;">
-                <div class="input-group"><label>Email</label><br><input type="email" id="reg-email">
-                    <button style="background: #e0e0e0; padding: 10px; border: none; border-radius: 6px; margin-top: 10px; width:100%; cursor:pointer;" onclick="sendEmailOTP()">Send OTP to Email</button>
+
+            <div id="form-register" class="hidden">
+                <!-- Step 1: Email & OTP -->
+                <div id="reg-step-1">
+                    <div class="input-group">
+                        <label>Email Address</label><br>
+                        <input type="email" id="reg-email" placeholder="Enter valid email">
+                        <button id="btn-send-otp" class="btn-grey" style="margin-top:10px;" onclick="sendEmailOTP()">Send OTP to Email</button>
+                    </div>
+                    
+                    <div id="otp-section" class="hidden">
+                        <div class="input-group">
+                            <label>Email OTP</label><br>
+                            <input type="number" id="reg-otp" placeholder="Enter 4-digit code">
+                        </div>
+                        <button class="btn-blue" onclick="verifyOTP()">Verify OTP</button>
+                    </div>
                 </div>
-                <div class="input-group"><label>Email OTP</label><br><input type="number" id="reg-otp"></div>
-                <div class="input-group"><label>Password</label><br><input type="password" id="reg-pass"></div>
-                <div class="input-group"><label>Referral Code</label><br><input type="text" id="reg-ref"></div>
-                <button class="btn-blue" id="btn-register" onclick="verifyRegister()">REGISTER</button>
+
+                <!-- Step 2: Password & Optional Referral -->
+                <div id="reg-step-2" class="hidden">
+                    <div style="background: #eef3f9; padding: 10px; border-radius:6px; margin-bottom:15px; color:#2ecc71; font-weight:bold; text-align:center;">
+                        ✅ Email Verified Successfully!
+                    </div>
+                    <div class="input-group"><label>Create Password</label><br><input type="password" id="reg-pass" placeholder="Min 6 characters"></div>
+                    <div class="input-group"><label>Referral Code (Optional)</label><br><input type="text" id="reg-ref" placeholder="Optional"></div>
+                    <button class="btn-blue" onclick="finalRegister()">COMPLETE REGISTRATION</button>
+                </div>
             </div>
         </div>
     </div>
@@ -278,6 +284,7 @@ HTML_PAGE = """
     <div id="home-screen" class="screen">
         <div style="padding: 15px; display: flex; justify-content: space-between; align-items: center; background: white;">
             <b>ID: <span class="user-uid">Loading...</span></b>
+            <span style="background: #eef3f9; padding: 5px 10px; border-radius: 20px;">🪙 App</span>
         </div>
         <div class="card">
             <div style="color: #888;">Balance</div><h1 style="margin: 5px 0;">₹ <span class="user-bal">0.00</span></h1>
@@ -297,9 +304,9 @@ HTML_PAGE = """
         </div>
     </div>
 
-    <!-- 3. CRASH GAME SCREEN (BLUE) -->
+    <!-- 3. GAMES -->
     <div id="crash-screen" class="screen">
-        <div class="blue-header"><span onclick="switchScreen('home-screen')" style="cursor:pointer; font-size:22px;">❮</span> Crash <span style="font-size:14px; cursor:pointer;">Rule ❓</span></div>
+        <div class="blue-header"><span onclick="switchScreen('home-screen')" style="cursor:pointer; font-size:22px;">❮</span> Crash <span></span></div>
         <div class="history-bar" id="crash-history"></div>
         <div class="game-container">
             <canvas id="crashCanvas"></canvas>
@@ -308,24 +315,15 @@ HTML_PAGE = """
                 <div id="crash-display" class="timer-text">12.0s</div>
             </div>
         </div>
-        <div style="background: white; padding: 15px; border-bottom: 2px solid #eee;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;"><div style="color:#888;">Balance: ₹<span class="user-bal">0.00</span></div></div>
-            <div style="display: flex; gap: 10px;"><input type="number" id="crash-bet" value="10" style="width: 60%; padding: 10px; border: 1px solid #ccc; border-radius: 5px;"><button class="btn-blue" style="width: 40%;" onclick="showPopup('Success', 'Bet Placed!')">START</button></div>
-        </div>
-        <!-- LIVE BETS TABLE -->
         <div class="live-bets">
-            <div style="display:flex; justify-content:space-between; margin-bottom:10px; color:#888;">
-                <span>Players: <b id="crash-players">0</b></span>
-                <span>Total Bet: <b id="crash-totalamt">₹0</b></span>
-            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px; color:#888;"><span>Players: <b id="crash-players">0</b></span><span>Total Bet: <b id="crash-totalamt">₹0</b></span></div>
             <div class="bets-header"><div>User</div><div>Bet</div><div>Mult</div><div>Profit</div></div>
             <div id="crash-orders"></div>
         </div>
     </div>
 
-    <!-- 3. AVIATOR GAME SCREEN (RED) -->
     <div id="aviator-screen" class="screen">
-        <div class="red-header"><span onclick="switchScreen('home-screen')" style="cursor:pointer; font-size:22px;">❮</span> Aviator <span style="font-size:14px; cursor:pointer;">Rule ❓</span></div>
+        <div class="red-header"><span onclick="switchScreen('home-screen')" style="cursor:pointer; font-size:22px;">❮</span> Aviator <span></span></div>
         <div class="history-bar" id="aviator-history"></div>
         <div class="game-container aviator-bg">
             <canvas id="aviatorCanvas"></canvas>
@@ -334,22 +332,36 @@ HTML_PAGE = """
                 <div id="aviator-display" class="timer-text aviator-text">8.0s</div>
             </div>
         </div>
-        <div style="background: white; padding: 15px; border-bottom: 2px solid #eee;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;"><div style="color:#888;">Balance: ₹<span class="user-bal">0.00</span></div></div>
-            <div style="display: flex; gap: 10px;"><input type="number" id="aviator-bet" value="10" style="width: 60%; padding: 10px; border: 1px solid #ccc; border-radius: 5px;"><button class="btn-red" style="width: 40%;" onclick="showPopup('Success', 'Bet Placed!')">START</button></div>
-        </div>
-        <!-- LIVE BETS TABLE -->
         <div class="live-bets">
-            <div style="display:flex; justify-content:space-between; margin-bottom:10px; color:#888;">
-                <span>Players: <b id="aviator-players">0</b></span>
-                <span>Total Bet: <b id="aviator-totalamt">₹0</b></span>
-            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px; color:#888;"><span>Players: <b id="aviator-players">0</b></span><span>Total Bet: <b id="aviator-totalamt">₹0</b></span></div>
             <div class="bets-header"><div>User</div><div>Bet</div><div>Mult</div><div>Profit</div></div>
             <div id="aviator-orders"></div>
         </div>
     </div>
 
-    <!-- OTHER SCREENS (Recharge, Withdraw, Invite, Profile) -->
+    <!-- OTHER SCREENS -->
+    <div id="recharge-screen" class="screen">
+        <div class="blue-header"><span onclick="switchScreen('home-screen')">❮</span> Recharge <span></span></div>
+        <div class="card"><h3>Recharge Gateway Offline</h3></div>
+    </div>
+    
+    <div id="withdraw-screen" class="screen">
+        <div class="blue-header"><span onclick="switchScreen('home-screen')">❮</span> Withdraw <span></span></div>
+        <div class="card"><h2>₹ <span class="user-bal">0.00</span></h2></div>
+    </div>
+
+    <div id="invite-screen" class="screen">
+        <div class="blue-header" style="justify-content: center;">Invite & Earn</div>
+        <div class="card" style="text-align: center;"><p id="invite-link-text" style="background: #eef3f9; padding: 10px; font-weight:bold; color:#4a88ff;">Loading...</p></div>
+    </div>
+
+    <div id="profile-screen" class="screen">
+        <div style="background: #4a88ff; padding: 40px 20px 20px 20px; color: white; display: flex; align-items: center; gap: 15px; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;">
+            <div style="width: 60px; height: 60px; background: white; border-radius: 50%; display:flex; justify-content:center; align-items:center; font-size: 30px;">👤</div>
+            <div><h3 id="profile-email" style="margin:0 0 5px 0;"></h3><div style="font-size:14px; background:rgba(0,0,0,0.2); padding:2px 10px; border-radius:10px;">ID: <span class="user-uid"></span></div></div>
+        </div>
+        <div class="card" style="padding:0; overflow:hidden; margin-top:20px;"> 
+            <!-- 4. OTHER SCREENS (Recharge, Withdraw, Invite, Profile) -->
     <div id="recharge-screen" class="screen">
         <div class="blue-header"><span onclick="switchScreen('home-screen')">❮</span> Recharge <span></span></div>
         <div class="card">
@@ -375,7 +387,7 @@ HTML_PAGE = """
         </div>
     </div>
 
-    <!-- PROFILE WITH CHANGE PASSWORD -->
+    <!-- PROFILE SCREEN -->
     <div id="profile-screen" class="screen">
         <div style="background: #4a88ff; padding: 40px 20px 20px 20px; color: white; display: flex; align-items: center; gap: 15px; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;">
             <div style="width: 60px; height: 60px; background: white; border-radius: 50%; display:flex; justify-content:center; align-items:center; font-size: 30px;">👤</div>
@@ -384,17 +396,13 @@ HTML_PAGE = """
                 <div style="font-size:14px; background:rgba(0,0,0,0.2); padding:2px 10px; border-radius:10px;">ID: <span class="user-uid"></span></div>
             </div>
         </div>
-        <div class="card" style="margin-top: -20px; position:relative; z-index:10; display:flex; justify-content:space-between; align-items:center;">
-            <div><div style="color:#888; font-size:14px;">Total Balance</div><h2 style="margin:5px 0;">₹ <span class="user-bal">0.00</span></h2></div>
-        </div>
-        <div class="card" style="padding:0; overflow:hidden;">
-            <div style="padding: 15px 20px; border-bottom: 1px solid #eee; font-weight: bold; cursor:pointer;" onclick="showPopup('Order Record', 'No recent bets.')">📄 Order Record </div>
-            <div style="padding: 15px 20px; border-bottom: 1px solid #eee; font-weight: bold; cursor:pointer;" onclick="openChangePassword()">🔒 Change Password</div>
+        <div class="card" style="padding:0; overflow:hidden; margin-top:20px;">
             <div style="padding: 15px 20px; border-bottom: 1px solid #eee; font-weight: bold; cursor:pointer;" onclick="showPopup('Support', 'Connecting to Chat...')">🎧 Support</div>
             <div style="padding: 15px 20px; font-weight: bold; color: #e74c3c; text-align: center; cursor:pointer;" onclick="logout()">Log Out</div>
         </div>
     </div>
 
+    <!-- BOTTOM NAVIGATION -->
     <div class="bottom-nav" id="bottom-nav" style="display: none;">
         <div class="nav-item active" onclick="switchScreen('home-screen', this)">🏠<br>Home</div>
         <div class="nav-item" onclick="switchScreen('invite-screen', this)">👥<br>Invite</div>
@@ -403,71 +411,91 @@ HTML_PAGE = """
     </div>
 
     <script>
-        let userEmail = ""; let userUID = ""; let userBalance = 0.00;
+        let userEmail = "", userUID = "", userBalance = 0.00, otpTimerInterval;
         
-        function showPopup(title, message) {
+        function showPopup(title, msg) {
             document.getElementById('popup-title').innerText = title;
-            document.getElementById('popup-message').innerText = message;
-            document.getElementById('popup-inputs').style.display = 'none';
-            document.getElementById('popup-ok').onclick = closePopup;
+            document.getElementById('popup-message').innerText = msg;
             document.getElementById('custom-popup').style.display = 'flex';
         }
         function closePopup() { document.getElementById('custom-popup').style.display = 'none'; }
         
-        // --- CHANGE PASSWORD LOGIC ---
-        function openChangePassword() {
-            document.getElementById('popup-title').innerText = "Change Password";
-            document.getElementById('popup-message').innerText = "";
-            let inputs = document.getElementById('popup-inputs');
-            inputs.innerHTML = `<input type='password' id='old_p' placeholder='Old Password' style='width:90%; padding:10px; margin-bottom:10px;'>
-                                <input type='password' id='new_p' placeholder='New Password' style='width:90%; padding:10px;'>`;
-            inputs.style.display = 'block';
-            
-            document.getElementById('popup-ok').onclick = async function() {
-                let old_p = document.getElementById('old_p').value;
-                let new_p = document.getElementById('new_p').value;
-                if(new_p.length < 6) { alert("New password must be 6+ chars"); return; }
-                
-                let res = await fetch('/api/change_password', {
-                    method: 'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({email: userEmail, old_pass: old_p, new_pass: new_p})
-                });
-                let data = await res.json();
-                closePopup();
-                setTimeout(() => showPopup(data.status==='success'?"Success":"Error", data.message), 300);
-            };
-            document.getElementById('custom-popup').style.display = 'flex';
-        }
-
-        // --- AUTH ---
         function toggleAuth(type) {
-            document.getElementById('tab-login').classList.remove('active'); document.getElementById('tab-register').classList.remove('active');
-            document.getElementById('form-login').style.display = 'none'; document.getElementById('form-register').style.display = 'none';
-            if(type === 'login') { document.getElementById('tab-login').classList.add('active'); document.getElementById('form-login').style.display = 'block'; }
-            else { document.getElementById('tab-register').classList.add('active'); document.getElementById('form-register').style.display = 'block'; }
+            document.getElementById('tab-login').classList.remove('active'); 
+            document.getElementById('tab-register').classList.remove('active');
+            document.getElementById('form-login').classList.add('hidden'); 
+            document.getElementById('form-register').classList.add('hidden');
+            if(type === 'login') { 
+                document.getElementById('tab-login').classList.add('active'); 
+                document.getElementById('form-login').classList.remove('hidden'); 
+            } else { 
+                document.getElementById('tab-register').classList.add('active'); 
+                document.getElementById('form-register').classList.remove('hidden'); 
+            }
         }
 
         async function sendEmailOTP() {
             let email = document.getElementById('reg-email').value;
-            if(!email.includes('@')) return showPopup("Error", "Invalid email");
-            document.getElementById('btn-send-otp').innerText = "Sending...";
-            let res = await fetch('/api/send_otp', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email: email }) });
-            let data = await res.json();
-            showPopup("Status", data.message);
-            document.getElementById('btn-send-otp').innerText = "Send OTP";
+            if(!email.includes('@')) return showPopup("Error", "Enter valid email");
+            
+            let btn = document.getElementById('btn-send-otp');
+            btn.innerText = "Sending..."; btn.disabled = true;
+
+            try {
+                let res = await fetch('/api/send_otp', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email: email }) });
+                let data = await res.json();
+                showPopup("Status", data.message);
+                if(data.status === 'success') {
+                    document.getElementById('otp-section').classList.remove('hidden');
+                    document.getElementById('reg-email').readOnly = true;
+                    startTimer();
+                } else { btn.innerText = "Send OTP to Email"; btn.disabled = false; }
+            } catch(e) { btn.innerText = "Send OTP to Email"; btn.disabled = false; }
         }
 
-        async function verifyRegister() {
-            let email = document.getElementById('reg-email').value; let otp = document.getElementById('reg-otp').value;
-            let pass = document.getElementById('reg-pass').value; let ref = document.getElementById('reg-ref').value;
-            let res = await fetch('/api/register', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email: email, otp: otp, password: pass, ref: ref }) });
+        function startTimer() {
+            let btn = document.getElementById('btn-send-otp');
+            let timeLeft = 50;
+            clearInterval(otpTimerInterval);
+            otpTimerInterval = setInterval(() => {
+                btn.innerText = `Resend in ${timeLeft}s`;
+                timeLeft--;
+                if (timeLeft < 0) {
+                    clearInterval(otpTimerInterval);
+                    btn.innerText = "Resend OTP";
+                    btn.disabled = false;
+                }
+            }, 1000);
+        }
+
+        async function verifyOTP() {
+            let email = document.getElementById('reg-email').value;
+            let otp = document.getElementById('reg-otp').value;
+            let res = await fetch('/api/verify_otp', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email: email, otp: otp }) });
             let data = await res.json();
-            if(data.status === 'success') { showPopup("Success", data.message); setTimeout(() => { closePopup(); loginSuccess(email, data.uid, data.balance); }, 2000); }
-            else showPopup("Error", data.message);
+            if(data.status === 'success') {
+                document.getElementById('reg-step-1').classList.add('hidden');
+                document.getElementById('reg-step-2').classList.remove('hidden');
+            } else { showPopup("Error", data.message); }
+        }
+
+        async function finalRegister() {
+            let email = document.getElementById('reg-email').value; 
+            let pass = document.getElementById('reg-pass').value; 
+            let ref = document.getElementById('reg-ref').value;
+            if(pass.length < 6) return showPopup("Error", "Password must be 6+ characters");
+            
+            let res = await fetch('/api/register', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email: email, password: pass, ref: ref }) });
+            let data = await res.json();
+            if(data.status === 'success') { 
+                showPopup("Success", data.message); 
+                setTimeout(() => { closePopup(); loginSuccess(email, data.uid, data.balance); }, 1500); 
+            } else { showPopup("Error", data.message); }
         }
 
         async function verifyLogin() {
-            let email = document.getElementById('login-email').value; let pass = document.getElementById('login-pass').value;
+            let email = document.getElementById('login-email').value; 
+            let pass = document.getElementById('login-pass').value;
             let res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email: email, password: pass }) });
             let data = await res.json();
             if(data.status === 'success') loginSuccess(email, data.uid, data.balance);
@@ -478,25 +506,24 @@ HTML_PAGE = """
             userEmail = email; userUID = uid; userBalance = balance.toFixed(2);
             document.querySelectorAll('.user-uid').forEach(el => el.innerText = userUID);
             document.querySelectorAll('.user-bal').forEach(el => el.innerText = userBalance);
-            let parts = email.split("@");
-            document.getElementById('profile-email').innerText = (parts[0].length>3?parts[0].substring(0,3)+"***":parts[0]) + "@" + parts[1];
+            document.getElementById('profile-email').innerText = email;
             document.getElementById('invite-link-text').innerText = window.location.origin + "/invite?ref=" + userUID;
             switchScreen('home-screen', document.querySelectorAll('.nav-item')[0]);
             document.getElementById('bottom-nav').style.display = "flex";
         }
 
-        function logout() { document.getElementById('bottom-nav').style.display = "none"; switchScreen('auth-screen'); }
+        function logout() { location.reload(); }
+        
         function switchScreen(screenId, navElement = null) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
             document.getElementById(screenId).classList.add('active-screen');
             if(navElement) { document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active')); navElement.classList.add('active'); }
+            if(screenId.includes('crash') || screenId.includes('aviator')) drawGraph(screenId.replace('-screen', 'Canvas'), 1.0, false, screenId.includes('aviator'));
         }
 
-        // =====================================
-        // 🚀 GRAPH DRAWING FUNCTION
-        // =====================================
         function drawGraph(canvasId, multiplier, isCrashed, isAviator) {
             const canvas = document.getElementById(canvasId);
+            if(!canvas) return;
             const ctx = canvas.getContext('2d');
             canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight;
             let w = canvas.width, h = canvas.height;
@@ -523,21 +550,17 @@ HTML_PAGE = """
                 ctx.strokeStyle = finalColor; ctx.lineWidth = 4; ctx.stroke();
                 
                 ctx.font = "30px Arial"; 
-                if (isAviator) ctx.fillText(isCrashed ? "💥" : "✈️", endX - 10, endY + 10);
+                if (isAviator) ctx.fillText(isCrashed ? "💥" : "✈", endX - 10, endY + 10);
                 else ctx.fillText(isCrashed ? "💥" : "🚀", endX - 10, endY + 10);
             }
         }
 
-        // =====================================
-        // 🔄 SYNC GAMES & LIVE BETS
-        // =====================================
         async function syncGame(gameName) {
             if(!document.getElementById(gameName+'-screen').classList.contains('active-screen')) return;
             try {
                 let res = await fetch('/api/game_state/' + gameName);
                 let data = await res.json();
                 
-                // History
                 let hBar = document.getElementById(gameName+'-history');
                 hBar.innerHTML = '';
                 data.history.forEach(val => { hBar.innerHTML += `<div class="pill ${val<2?'red':(val<5?'blue':'green')}">${val}x</div>`; });
@@ -546,24 +569,19 @@ HTML_PAGE = """
                 let display = document.getElementById(gameName+'-display');
                 let isAviator = gameName === 'aviator';
 
-                // Display Game Status
                 if(data.status === 'waiting') {
                     title.innerText = "Next round in"; display.innerText = data.time_left.toFixed(1) + "s"; 
-                    display.style.color = isAviator ? "#aaa" : "#333";
                     drawGraph(gameName+'Canvas', 1.00, false, isAviator);
                 } 
                 else if(data.status === 'flying') {
                     title.innerText = ""; display.innerText = data.multiplier.toFixed(2) + "x"; 
-                    display.style.color = isAviator ? "#e74c3c" : "#4a88ff";
                     drawGraph(gameName+'Canvas', data.multiplier, false, isAviator);
                 }
                 else if(data.status === 'crashed') {
                     title.innerText = "Crashed"; display.innerText = data.multiplier.toFixed(2) + "x"; 
-                    display.style.color = isAviator ? "#c0392b" : "#e74c3c";
                     drawGraph(gameName+'Canvas', data.multiplier, true, isAviator);
                 }
 
-                // Render Live Fake Bets (Order Book)
                 document.getElementById(gameName+'-players').innerText = data.active_users;
                 document.getElementById(gameName+'-totalamt').innerText = '₹' + data.total_amount;
                 
@@ -575,20 +593,11 @@ HTML_PAGE = """
                     html += `<div class="bet-row"><div>${b.uid}</div><div>₹${b.bet}</div><div>${st}</div><div>${pr}</div></div>`;
                 });
                 ordersDiv.innerHTML = html;
-
             } catch(e) {}
         }
-
         setInterval(() => { syncGame('crash'); syncGame('aviator'); }, 100); 
-
     </script>
 </body>
 </html>
-"""
 
-@app.route('/')
-def home():
-    return render_template_string(HTML_PAGE)
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+            <div style="padding: 15px 20px; font-weight: bold; color: #e74c3c; text-align: center; cursor:pointer
