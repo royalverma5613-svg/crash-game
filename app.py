@@ -9,10 +9,10 @@ from email.mime.text import MIMEText
 app = Flask(__name__)
 
 # ==========================================
-# 📧 GMAIL SMTP CONFIGURATION (Set with your App Password)
+# 📧 GMAIL SMTP CONFIGURATION
 # ==========================================
-SENDER_EMAIL = "your_email@gmail.com"  # Yahan apna Gmail dalein
-SENDER_PASSWORD = "mfoq cjkt eyub tuvu"  # Aapka generated App password set kar diya hai
+SENDER_EMAIL = "your_email@gmail.com"  # Apna Gmail yahan dalein
+SENDER_PASSWORD = "mfoq cjkt eyub tuvu"  # Aapka App Password set hai
 
 # ==========================================
 # 💾 DATABASE SETUP
@@ -113,7 +113,6 @@ def send_otp():
         server.quit()
         return jsonify({"status": "success", "message": "OTP sent! Check your Gmail inbox."})
     except Exception as e:
-        print(f"SMTP ERROR: {e}")
         return jsonify({"status": "error", "message": "Failed to send email. Check SMTP settings."})
 
 @app.route('/api/verify_otp', methods=['POST'])
@@ -250,7 +249,6 @@ HTML_PAGE = """
             </div>
 
             <div id="form-register" class="hidden">
-                <!-- Step 1: Email & OTP -->
                 <div id="reg-step-1">
                     <div class="input-group">
                         <label>Email Address</label><br>
@@ -267,7 +265,6 @@ HTML_PAGE = """
                     </div>
                 </div>
 
-                <!-- Step 2: Password & Optional Referral -->
                 <div id="reg-step-2" class="hidden">
                     <div style="background: #eef3f9; padding: 10px; border-radius:6px; margin-bottom:15px; color:#2ecc71; font-weight:bold; text-align:center;">
                         ✅ Email Verified Successfully!
@@ -360,244 +357,10 @@ HTML_PAGE = """
             <div style="width: 60px; height: 60px; background: white; border-radius: 50%; display:flex; justify-content:center; align-items:center; font-size: 30px;">👤</div>
             <div><h3 id="profile-email" style="margin:0 0 5px 0;"></h3><div style="font-size:14px; background:rgba(0,0,0,0.2); padding:2px 10px; border-radius:10px;">ID: <span class="user-uid"></span></div></div>
         </div>
-        <div class="card" style="padding:0; overflow:hidden; margin-top:20px;"> 
-            <!-- 4. OTHER SCREENS (Recharge, Withdraw, Invite, Profile) -->
-    <div id="recharge-screen" class="screen">
-        <div class="blue-header"><span onclick="switchScreen('home-screen')">❮</span> Recharge <span></span></div>
-        <div class="card">
-            <h3>Select Amount</h3><input type="number" placeholder="Enter Amount" style="width: 90%; padding: 12px; border: 1px solid #ccc; margin-bottom:20px;">
-            <button class="btn-blue" onclick="showPopup('Redirecting...', 'Connecting to Payment Gateway...')">Pay Now</button>
-        </div>
-    </div>
-    
-    <div id="withdraw-screen" class="screen">
-        <div class="blue-header"><span onclick="switchScreen('home-screen')">❮</span> Withdraw <span></span></div>
-        <div class="card">
-            <h2>₹ <span class="user-bal">0.00</span></h2>
-            <input type="text" placeholder="Enter UPI ID" style="width: 90%; padding: 12px; margin: 10px 0 20px 0;">
-            <button class="btn-blue" onclick="showPopup('Error', 'Min withdrawal is ₹500')">Withdraw</button>
-        </div>
-    </div>
-
-    <div id="invite-screen" class="screen">
-        <div class="blue-header" style="justify-content: center;">Invite & Earn</div>
-        <div class="card" style="text-align: center;">
-            <p id="invite-link-text" style="background: #eef3f9; padding: 10px; font-weight:bold; color:#4a88ff;">Loading...</p>
-            <button class="btn-blue" onclick="showPopup('Copied', 'Referral link copied!')">Copy Link</button>
-        </div>
-    </div>
-
-    <!-- PROFILE SCREEN -->
-    <div id="profile-screen" class="screen">
-        <div style="background: #4a88ff; padding: 40px 20px 20px 20px; color: white; display: flex; align-items: center; gap: 15px; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;">
-            <div style="width: 60px; height: 60px; background: white; border-radius: 50%; display:flex; justify-content:center; align-items:center; font-size: 30px;">👤</div>
-            <div>
-                <h3 id="profile-email" style="margin:0 0 5px 0;"></h3>
-                <div style="font-size:14px; background:rgba(0,0,0,0.2); padding:2px 10px; border-radius:10px;">ID: <span class="user-uid"></span></div>
-            </div>
-        </div>
         <div class="card" style="padding:0; overflow:hidden; margin-top:20px;">
-            <div style="padding: 15px 20px; border-bottom: 1px solid #eee; font-weight: bold; cursor:pointer;" onclick="showPopup('Support', 'Connecting to Chat...')">🎧 Support</div>
             <div style="padding: 15px 20px; font-weight: bold; color: #e74c3c; text-align: center; cursor:pointer;" onclick="logout()">Log Out</div>
         </div>
     </div>
 
-    <!-- BOTTOM NAVIGATION -->
     <div class="bottom-nav" id="bottom-nav" style="display: none;">
-        <div class="nav-item active" onclick="switchScreen('home-screen', this)">🏠<br>Home</div>
-        <div class="nav-item" onclick="switchScreen('invite-screen', this)">👥<br>Invite</div>
-        <div class="nav-item" onclick="switchScreen('recharge-screen', this)">💳<br>Recharge</div>
-        <div class="nav-item" onclick="switchScreen('profile-screen', this)">👤<br>My</div>
-    </div>
-
-    <script>
-        let userEmail = "", userUID = "", userBalance = 0.00, otpTimerInterval;
-        
-        function showPopup(title, msg) {
-            document.getElementById('popup-title').innerText = title;
-            document.getElementById('popup-message').innerText = msg;
-            document.getElementById('custom-popup').style.display = 'flex';
-        }
-        function closePopup() { document.getElementById('custom-popup').style.display = 'none'; }
-        
-        function toggleAuth(type) {
-            document.getElementById('tab-login').classList.remove('active'); 
-            document.getElementById('tab-register').classList.remove('active');
-            document.getElementById('form-login').classList.add('hidden'); 
-            document.getElementById('form-register').classList.add('hidden');
-            if(type === 'login') { 
-                document.getElementById('tab-login').classList.add('active'); 
-                document.getElementById('form-login').classList.remove('hidden'); 
-            } else { 
-                document.getElementById('tab-register').classList.add('active'); 
-                document.getElementById('form-register').classList.remove('hidden'); 
-            }
-        }
-
-        async function sendEmailOTP() {
-            let email = document.getElementById('reg-email').value;
-            if(!email.includes('@')) return showPopup("Error", "Enter valid email");
-            
-            let btn = document.getElementById('btn-send-otp');
-            btn.innerText = "Sending..."; btn.disabled = true;
-
-            try {
-                let res = await fetch('/api/send_otp', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email: email }) });
-                let data = await res.json();
-                showPopup("Status", data.message);
-                if(data.status === 'success') {
-                    document.getElementById('otp-section').classList.remove('hidden');
-                    document.getElementById('reg-email').readOnly = true;
-                    startTimer();
-                } else { btn.innerText = "Send OTP to Email"; btn.disabled = false; }
-            } catch(e) { btn.innerText = "Send OTP to Email"; btn.disabled = false; }
-        }
-
-        function startTimer() {
-            let btn = document.getElementById('btn-send-otp');
-            let timeLeft = 50;
-            clearInterval(otpTimerInterval);
-            otpTimerInterval = setInterval(() => {
-                btn.innerText = `Resend in ${timeLeft}s`;
-                timeLeft--;
-                if (timeLeft < 0) {
-                    clearInterval(otpTimerInterval);
-                    btn.innerText = "Resend OTP";
-                    btn.disabled = false;
-                }
-            }, 1000);
-        }
-
-        async function verifyOTP() {
-            let email = document.getElementById('reg-email').value;
-            let otp = document.getElementById('reg-otp').value;
-            let res = await fetch('/api/verify_otp', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email: email, otp: otp }) });
-            let data = await res.json();
-            if(data.status === 'success') {
-                document.getElementById('reg-step-1').classList.add('hidden');
-                document.getElementById('reg-step-2').classList.remove('hidden');
-            } else { showPopup("Error", data.message); }
-        }
-
-        async function finalRegister() {
-            let email = document.getElementById('reg-email').value; 
-            let pass = document.getElementById('reg-pass').value; 
-            let ref = document.getElementById('reg-ref').value;
-            if(pass.length < 6) return showPopup("Error", "Password must be 6+ characters");
-            
-            let res = await fetch('/api/register', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email: email, password: pass, ref: ref }) });
-            let data = await res.json();
-            if(data.status === 'success') { 
-                showPopup("Success", data.message); 
-                setTimeout(() => { closePopup(); loginSuccess(email, data.uid, data.balance); }, 1500); 
-            } else { showPopup("Error", data.message); }
-        }
-
-        async function verifyLogin() {
-            let email = document.getElementById('login-email').value; 
-            let pass = document.getElementById('login-pass').value;
-            let res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email: email, password: pass }) });
-            let data = await res.json();
-            if(data.status === 'success') loginSuccess(email, data.uid, data.balance);
-            else showPopup("Error", data.message);
-        }
-
-        function loginSuccess(email, uid, balance) {
-            userEmail = email; userUID = uid; userBalance = balance.toFixed(2);
-            document.querySelectorAll('.user-uid').forEach(el => el.innerText = userUID);
-            document.querySelectorAll('.user-bal').forEach(el => el.innerText = userBalance);
-            document.getElementById('profile-email').innerText = email;
-            document.getElementById('invite-link-text').innerText = window.location.origin + "/invite?ref=" + userUID;
-            switchScreen('home-screen', document.querySelectorAll('.nav-item')[0]);
-            document.getElementById('bottom-nav').style.display = "flex";
-        }
-
-        function logout() { location.reload(); }
-        
-        function switchScreen(screenId, navElement = null) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active-screen'));
-            document.getElementById(screenId).classList.add('active-screen');
-            if(navElement) { document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active')); navElement.classList.add('active'); }
-            if(screenId.includes('crash') || screenId.includes('aviator')) drawGraph(screenId.replace('-screen', 'Canvas'), 1.0, false, screenId.includes('aviator'));
-        }
-
-        function drawGraph(canvasId, multiplier, isCrashed, isAviator) {
-            const canvas = document.getElementById(canvasId);
-            if(!canvas) return;
-            const ctx = canvas.getContext('2d');
-            canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight;
-            let w = canvas.width, h = canvas.height;
-            ctx.clearRect(0,0,w,h);
-
-            ctx.strokeStyle = isAviator ? '#333' : '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath();
-            for(let i=0; i<w; i+=40) { ctx.moveTo(i,0); ctx.lineTo(i,h); }
-            for(let i=0; i<h; i+=40) { ctx.moveTo(0,i); ctx.lineTo(w,i); }
-            ctx.stroke();
-
-            let progress = Math.min((multiplier - 1) / 4.0, 1.0); 
-            if (multiplier === 1.00) progress = 0;
-            let startX = 20, startY = h - 20, endX = 20 + (w - 60) * progress, endY = (h - 20) - ((h - 60) * Math.pow(progress, 1.2)); 
-
-            if (progress > 0) {
-                let mainColor = isAviator ? '#e74c3c' : '#4a88ff';
-                let crashColor = isAviator ? '#c0392b' : '#e74c3c';
-                let finalColor = isCrashed ? crashColor : mainColor;
-
-                ctx.beginPath(); ctx.moveTo(startX, startY); ctx.quadraticCurveTo(endX * 0.5, startY, endX, endY);
-                ctx.lineTo(endX, h); ctx.lineTo(startX, h);
-                ctx.fillStyle = isCrashed ? (isAviator?'rgba(192, 57, 43, 0.2)':'rgba(231, 76, 60, 0.2)') : (isAviator?'rgba(231, 76, 60, 0.2)':'rgba(74, 136, 255, 0.2)'); ctx.fill();
-                ctx.beginPath(); ctx.moveTo(startX, startY); ctx.quadraticCurveTo(endX * 0.5, startY, endX, endY);
-                ctx.strokeStyle = finalColor; ctx.lineWidth = 4; ctx.stroke();
-                
-                ctx.font = "30px Arial"; 
-                if (isAviator) ctx.fillText(isCrashed ? "💥" : "✈", endX - 10, endY + 10);
-                else ctx.fillText(isCrashed ? "💥" : "🚀", endX - 10, endY + 10);
-            }
-        }
-
-        async function syncGame(gameName) {
-            if(!document.getElementById(gameName+'-screen').classList.contains('active-screen')) return;
-            try {
-                let res = await fetch('/api/game_state/' + gameName);
-                let data = await res.json();
-                
-                let hBar = document.getElementById(gameName+'-history');
-                hBar.innerHTML = '';
-                data.history.forEach(val => { hBar.innerHTML += `<div class="pill ${val<2?'red':(val<5?'blue':'green')}">${val}x</div>`; });
-
-                let title = document.getElementById(gameName+'-title');
-                let display = document.getElementById(gameName+'-display');
-                let isAviator = gameName === 'aviator';
-
-                if(data.status === 'waiting') {
-                    title.innerText = "Next round in"; display.innerText = data.time_left.toFixed(1) + "s"; 
-                    drawGraph(gameName+'Canvas', 1.00, false, isAviator);
-                } 
-                else if(data.status === 'flying') {
-                    title.innerText = ""; display.innerText = data.multiplier.toFixed(2) + "x"; 
-                    drawGraph(gameName+'Canvas', data.multiplier, false, isAviator);
-                }
-                else if(data.status === 'crashed') {
-                    title.innerText = "Crashed"; display.innerText = data.multiplier.toFixed(2) + "x"; 
-                    drawGraph(gameName+'Canvas', data.multiplier, true, isAviator);
-                }
-
-                document.getElementById(gameName+'-players').innerText = data.active_users;
-                document.getElementById(gameName+'-totalamt').innerText = '₹' + data.total_amount;
-                
-                let ordersDiv = document.getElementById(gameName+'-orders');
-                let html = "";
-                data.fake_bets.forEach(b => {
-                    let st = b.cashed_out ? `<span class="text-green">${b.stopped_at}x</span>` : (data.status=='crashed'?`<span class="text-red">Crash</span>`:`-`);
-                    let pr = b.cashed_out ? `<span class="text-green">+₹${b.profit}</span>` : (data.status=='crashed'?`<span class="text-red">-₹${b.bet}</span>`:`-`);
-                    html += `<div class="bet-row"><div>${b.uid}</div><div>₹${b.bet}</div><div>${st}</div><div>${pr}</div></div>`;
-                });
-                ordersDiv.innerHTML = html;
-            } catch(e) {}
-        }
-        setInterval(() => { syncGame('crash'); syncGame('aviator'); }, 100); 
-    </script>
-</body>
-</html>
-
-            <div style="padding: 15px 20px; font-weight: bold; color: #e74c3c; text-align: center; cursor:pointer
+        <div class="nav-item active" onclick="switchScreen
