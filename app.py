@@ -480,5 +480,91 @@ HTML_PAGE = """
 
         function drawGraph(canvasId, multiplier, isCrashed, isAviator) {
             const canvas = document.getElementById(canvasId);
+            if(!canvas) return;        function drawGraph(canvasId, multiplier, isCrashed, isAviator) {
+            const canvas = document.getElementById(canvasId);
             if(!canvas) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight;
+            let w = canvas.width, h = canvas.height;
+            ctx.clearRect(0,0,w,h);
+
+            ctx.strokeStyle = isAviator ? '#333' : '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath();
+            for(let i=0; i<w; i+=40) { ctx.moveTo(i,0); ctx.lineTo(i,h); }
+            for(let i=0; i<h; i+=40) { ctx.moveTo(0,i); ctx.lineTo(w,i); }
+            ctx.stroke();
+
+            let progress = Math.min((multiplier - 1) / 4.0, 1.0); 
+            if (multiplier === 1.00) progress = 0;
+            let startX = 20, startY = h - 20, endX = 20 + (w - 60) * progress, endY = (h - 20) - ((h - 60) * Math.pow(progress, 1.2)); 
+
+            if (progress > 0) {
+                let mainColor = isAviator ? '#e74c3c' : '#4a88ff';
+                let crashColor = isAviator ? '#c0392b' : '#e74c3c';
+                let finalColor = isCrashed ? crashColor : mainColor;
+
+                ctx.beginPath(); ctx.moveTo(startX, startY); ctx.quadraticCurveTo(endX * 0.5, startY, endX, endY);
+                ctx.lineTo(endX, h); ctx.lineTo(startX, h);
+                ctx.fillStyle = isCrashed ? (isAviator?'rgba(192, 57, 43, 0.2)':'rgba(231, 76, 60, 0.2)') : (isAviator?'rgba(231, 76, 60, 0.2)':'rgba(74, 136, 255, 0.2)'); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(startX, startY); ctx.quadraticCurveTo(endX * 0.5, startY, endX, endY);
+                ctx.strokeStyle = finalColor; ctx.lineWidth = 4; ctx.stroke();
+                
+                ctx.font = "30px Arial"; 
+                if (isAviator) ctx.fillText(isCrashed ? "💥" : "✈", endX - 10, endY + 10);
+                else ctx.fillText(isCrashed ? "💥" : "🚀", endX - 10, endY + 10);
+            }
+        }
+
+        async function syncGame(gameName) {
+            if(!document.getElementById(gameName+'-screen').classList.contains('active-screen')) return;
+            try {
+                let res = await fetch('/api/game_state/' + gameName);
+                let data = await res.json();
+                
+                let hBar = document.getElementById(gameName+'-history');
+                hBar.innerHTML = '';
+                data.history.forEach(val => { hBar.innerHTML += `<div class="pill ${val<2?'red':(val<5?'blue':'green')}">${val}x</div>`; });
+
+                let title = document.getElementById(gameName+'-title');
+                let display = document.getElementById(gameName+'-display');
+                let isAviator = gameName === 'aviator';
+
+                if(data.status === 'waiting') {
+                    title.innerText = "Next round in"; display.innerText = data.time_left.toFixed(1) + "s"; 
+                    drawGraph(gameName+'Canvas', 1.00, false, isAviator);
+                } 
+                else if(data.status === 'flying') {
+                    title.innerText = ""; display.innerText = data.multiplier.toFixed(2) + "x"; 
+                    drawGraph(gameName+'Canvas', data.multiplier, false, isAviator);
+                }
+                else if(data.status === 'crashed') {
+                    title.innerText = "Crashed"; display.innerText = data.multiplier.toFixed(2) + "x"; 
+                    drawGraph(gameName+'Canvas', data.multiplier, true, isAviator);
+                }
+
+                document.getElementById(gameName+'-players').innerText = data.active_users;
+                document.getElementById(gameName+'-totalamt').innerText = '₹' + data.total_amount;
+                
+                let ordersDiv = document.getElementById(gameName+'-orders');
+                let html = "";
+                data.fake_bets.forEach(b => {
+                    let st = b.cashed_out ? `<span class="text-green">${b.stopped_at}x</span>` : (data.status=='crashed'?`<span class="text-red">Crash</span>`:`-`);
+                    let pr = b.cashed_out ? `<span class="text-green">+₹${b.profit}</span>` : (data.status=='crashed'?`<span class="text-red">-₹${b.bet}</span>`:`-`);
+                    html += `<div class="bet-row"><div>${b.uid}</div><div>₹${b.bet}</div><div>${st}</div><div>${pr}</div></div>`;
+                });
+                ordersDiv.innerHTML = html;
+            } catch(e) {}
+        }
+        setInterval(() => { syncGame('crash'); syncGame('aviator'); }, 100); 
+    </script>
+</body>
+</html>
+"""
+
+@app.route('/')
+def home():
+    return render_template_string(HTML_PAGE)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+    
             
