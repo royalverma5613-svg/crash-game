@@ -7,17 +7,16 @@ app = Flask(__name__)
 # ==========================================
 # 📧 EMAIL OTP CONFIGURATION
 # ==========================================
-SENDER_EMAIL = "your_email@gmail.com"  # Yahan apna asal Gmail dalein
+SENDER_EMAIL = "your_email@gmail.com"  # Yahan apna Gmail dalein
 SENDER_PASSWORD = "mfoq cjkt eyub tuvu"  # Aapka App Password
 
 def init_db():
     conn = sqlite3.connect('users.db')
     conn.execute('CREATE TABLE IF NOT EXISTS users (email TEXT PRIMARY KEY, password TEXT, uid TEXT, ref TEXT, balance REAL)')
     conn.commit(); conn.close()
-
 init_db()
-otp_storage = {}
 
+otp_storage = {}
 SETTINGS = {"crash_active_users": 10000, "aviator_active_users": 100}
 games = {"crash": {"status":"waiting", "multiplier":1.0, "next_crash":2.5, "time_left":12.0, "history":[], "fake_bets":[], "total_amount":0},
          "aviator": {"status":"waiting", "multiplier":1.0, "next_crash":3.0, "time_left":8.0, "history":[], "fake_bets":[], "total_amount":0}}
@@ -25,7 +24,7 @@ games = {"crash": {"status":"waiting", "multiplier":1.0, "next_crash":2.5, "time
 def generate_fake_bets(num_users):
     bets = []; tot = sum(random.choice([20,50,100,200,500]) for _ in range(num_users))
     for _ in range(min(num_users, 40)):
-        bets.append({"uid": f"{random.randint(10,99)}***{random.randint(10,99)}", "bet": random.choice([20,50,100,200,500]), "cashout_target": round(random.uniform(1.05, 5.50), 2), "cashed_out": False, "profit": 0})
+        bets.append({"uid": f"{random.randint(10,99)}***{random.randint(10,99)}", "bet": random.choice([20,50,100,200,500]), "cashout_target": round(random.uniform(1.05, 5.50), 2), "cashed_out": False, "profit": 0, "stopped_at": 0})
     return bets, tot
 
 def game_thread(g, wait_time):
@@ -39,7 +38,7 @@ def game_thread(g, wait_time):
             m += (0.01 * m) + 0.01; games[g]["multiplier"] = round(m, 2)
             for b in games[g]["fake_bets"]:
                 if not b["cashed_out"] and m >= b["cashout_target"]:
-                    b["cashed_out"], b["profit"] = True, round(b["bet"] * b["cashout_target"], 2)
+                    b["cashed_out"], b["profit"], b["stopped_at"] = True, round(b["bet"] * b["cashout_target"], 2), b["cashout_target"]
             time.sleep(0.05)
         games[g]["status"], games[g]["multiplier"] = "crashed", games[g]["next_crash"]
         games[g]["history"].insert(0, games[g]["next_crash"])
@@ -53,8 +52,8 @@ threading.Thread(target=game_thread, args=("aviator", 8.0), daemon=True).start()
 def send_otp():
     email = request.json.get('email')
     if not email or "@" not in email: return jsonify({"status":"error", "message":"Invalid email"})
-    c = sqlite3.connect('users.db').cursor(); c.execute("SELECT * FROM users WHERE email=?", (email,))
-    if c.fetchone(): return jsonify({"status":"error", "message":"Email registered!"})
+    if sqlite3.connect('users.db').execute("SELECT * FROM users WHERE email=?", (email,)).fetchone():
+        return jsonify({"status":"error", "message":"Email registered!"})
     otp = str(random.randint(1000, 9999)); otp_storage[email] = otp
     try:
         msg = MIMEText(f"Your Super100x OTP is: {otp}"); msg['Subject']='Super100x OTP'; msg['From']=SENDER_EMAIL; msg['To']=email
@@ -72,14 +71,12 @@ def register_user():
     e, p, r = request.json.get('email'), request.json.get('password'), request.json.get('ref', '')
     uid = str(random.randint(1000000, 9999999))
     conn = sqlite3.connect('users.db'); conn.execute("INSERT INTO users (email, password, uid, ref, balance) VALUES (?,?,?,?,?)", (e, p, uid, r, 50.0))
-    conn.commit(); conn.close()
-    if e in otp_storage: del otp_storage[e]
+    conn.commit(); conn.close(); otp_storage.pop(e, None)
     return jsonify({"status":"success", "message":"Created!", "uid":uid, "balance":50.0})
 
 @app.route('/api/login', methods=['POST'])
 def login_user():
-    e, p = request.json.get('email'), request.json.get('password')
-    u = sqlite3.connect('users.db').execute("SELECT uid, balance FROM users WHERE email=? AND password=?", (e, p)).fetchone()
+    u = sqlite3.connect('users.db').execute("SELECT uid, balance FROM users WHERE email=? AND password=?", (request.json.get('email'), request.json.get('password'))).fetchone()
     return jsonify({"status":"success", "message":"Login success!", "uid":u[0], "balance":u[1]}) if u else jsonify({"status":"error", "message":"Wrong details"})
 
 @app.route('/api/game_state/<g>')
@@ -89,37 +86,29 @@ def get_state(g):
         return jsonify(d)
     return jsonify({"error":"Not found"})
 
-# YAHAN SE HTML FILE READ HOGI
-@app.route('/')
-def home():
-    with open('index.html', 'r', encoding='utf-8') as f:
-        return render_template_string(f.read())
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
-            <!DOCTYPE html>
+# ==========================================
+# 🌐 HTML & UI CODE
+# ==========================================
+HTML_PAGE = """
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Super 100x</title>
 <style>
 body{margin:0;font-family:Arial,sans-serif;background-color:#f4f5f7;color:#333;overflow-x:hidden;}
-.screen{display:none;min-height:100vh;padding-bottom:70px;}
-.active-screen{display:block;}
+.screen{display:none;min-height:100vh;padding-bottom:70px;} .active-screen{display:block;}
 .blue-header, .red-header{color:white;padding:15px;text-align:center;font-size:18px;font-weight:bold;position:sticky;top:0;z-index:50;display:flex;justify-content:space-between;}
 .blue-header{background:#4a88ff;} .red-header{background:#e74c3c;}
 .btn-blue, .btn-red{color:white;width:100%;padding:12px;border:none;border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;}
 .btn-blue{background:#4a88ff;} .btn-red{background:#e74c3c;}
 .btn-grey{background:#e0e0e0;color:#333;width:100%;padding:12px;border:none;border-radius:6px;font-weight:bold;}
 .card{background:white;margin:15px;padding:20px;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.05);}
-.input-group{margin-bottom:15px;}
-.input-group input{width:90%;padding:12px;border:1px solid #ccc;border-radius:6px;font-size:15px;margin-top:5px;outline:none;}
+.input-group{margin-bottom:15px;} .input-group input{width:90%;padding:12px;border:1px solid #ccc;border-radius:6px;font-size:15px;margin-top:5px;outline:none;}
 .auth-tabs{display:flex;justify-content:space-around;margin-bottom:20px;border-bottom:2px solid #eee;}
-.auth-tab{padding:10px 20px;font-weight:bold;color:#888;cursor:pointer;}
-.auth-tab.active{color:#4a88ff;border-bottom:3px solid #4a88ff;}
+.auth-tab{padding:10px 20px;font-weight:bold;color:#888;cursor:pointer;} .auth-tab.active{color:#4a88ff;border-bottom:3px solid #4a88ff;}
 .bottom-nav{position:fixed;bottom:0;width:100%;background:white;display:flex;justify-content:space-around;padding:10px 0;border-top:1px solid #ddd;z-index:100;}
-.nav-item{text-align:center;font-size:12px;color:#888;cursor:pointer;width:25%;}
-.nav-item.active{color:#4a88ff;font-weight:bold;}
+.nav-item{text-align:center;font-size:12px;color:#888;cursor:pointer;width:25%;} .nav-item.active{color:#4a88ff;font-weight:bold;}
 .custom-popup{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;justify-content:center;align-items:center;}
 .popup-content{background:white;width:80%;max-width:300px;padding:20px;border-radius:12px;text-align:center;}
 .history-bar{display:flex;gap:5px;padding:10px;overflow-x:auto;background:white;border-bottom:1px solid #eee;}
@@ -132,8 +121,7 @@ canvas{display:block;width:100%;height:100%;}
 .live-bets{background:white;margin-top:10px;padding:15px;font-size:14px;}
 .bet-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f4f5f7;}
 .bet-row div{width:25%;text-align:center;} .bet-row div:first-child{text-align:left;} .bet-row div:last-child{text-align:right;}
-.text-green{color:#2ecc71;font-weight:bold;} .text-red{color:#e74c3c;font-weight:bold;}
-.hidden{display:none !important;}
+.text-green{color:#2ecc71;font-weight:bold;} .text-red{color:#e74c3c;font-weight:bold;} .hidden{display:none !important;}
 </style>
 </head>
 <body>
@@ -150,7 +138,7 @@ canvas{display:block;width:100%;height:100%;}
             </div>
             <div id="form-register" class="hidden">
                 <div id="reg-step-1">
-                    <div class="input-group"><label>Email Address</label><br><input type="email" id="reg-email"><button id="btn-send-otp" class="btn-grey" style="margin-top:10px;" onclick="sendEmailOTP()">Send OTP</button></div>
+                    <div class="input-group"><label>Email</label><br><input type="email" id="reg-email"><button id="btn-send-otp" class="btn-grey" style="margin-top:10px;" onclick="sendEmailOTP()">Send OTP</button></div>
                     <div id="otp-section" class="hidden"><div class="input-group"><label>OTP</label><br><input type="number" id="reg-otp"></div><button class="btn-blue" onclick="verifyOTP()">Verify OTP</button></div>
                 </div>
                 <div id="reg-step-2" class="hidden">
@@ -168,8 +156,8 @@ canvas{display:block;width:100%;height:100%;}
         <div class="card"><div style="color:#888;">Balance</div><h1 style="margin:5px 0;">₹ <span class="user-bal"></span></h1>
         <div style="display:flex;gap:10px;margin-top:15px;"><button class="btn-blue">Recharge</button><button class="btn-grey">Withdraw</button></div></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;padding:15px;">
-            <div class="card" style="margin:0;text-align:center;padding:30px 10px;cursor:pointer;border:2px solid #4a88ff;" onclick="switchScreen('crash-screen')"><div style="font-size:40px;margin-bottom:10px;">🚀</div><b>Crash (12s)</b></div>
-            <div class="card" style="margin:0;text-align:center;padding:30px 10px;cursor:pointer;border:2px solid #e74c3c;" onclick="switchScreen('aviator-screen')"><div style="font-size:40px;margin-bottom:10px;">✈️</div><b>Aviator (8s)</b></div>
+            <div class="card" style="margin:0;text-align:center;padding:30px 10px;cursor:pointer;border:2px solid #4a88ff;" onclick="switchScreen('crash-screen')"><div style="font-size:40px;margin-bottom:10px;">🚀</div><b>Crash</b></div>
+            <div class="card" style="margin:0;text-align:center;padding:30px 10px;cursor:pointer;border:2px solid #e74c3c;" onclick="switchScreen('aviator-screen')"><div style="font-size:40px;margin-bottom:10px;">✈️️</div><b>Aviator</b></div>
         </div>
     </div>
 
@@ -193,15 +181,12 @@ canvas{display:block;width:100%;height:100%;}
     </div>
 
 <script>
-    let userEmail="", userUID="", otpTimerInterval;
+    let otpTimerInterval;
     function showPopup(t, m){ document.getElementById('popup-title').innerText=t; document.getElementById('popup-message').innerText=m; document.getElementById('custom-popup').style.display='flex'; }
     function toggleAuth(type){
-        document.getElementById('tab-login').classList.toggle('active', type==='login');
-        document.getElementById('tab-register').classList.toggle('active', type==='register');
-        document.getElementById('form-login').classList.toggle('hidden', type!=='login');
-        document.getElementById('form-register').classList.toggle('hidden', type!=='register');
+        document.getElementById('tab-login').classList.toggle('active', type==='login'); document.getElementById('tab-register').classList.toggle('active', type==='register');
+        document.getElementById('form-login').classList.toggle('hidden', type!=='login'); document.getElementById('form-register').classList.toggle('hidden', type!=='register');
     }
-
     async function sendEmailOTP() {
         let email = document.getElementById('reg-email').value;
         if(!email.includes('@')) return showPopup("Error", "Enter valid email");
@@ -240,7 +225,6 @@ canvas{display:block;width:100%;height:100%;}
         switchScreen('home-screen'); document.getElementById('bottom-nav').style.display="flex"; document.getElementById('custom-popup').style.display='none';
     }
     function switchScreen(id) { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active-screen')); document.getElementById(id).classList.add('active-screen'); }
-
     function drawGraph(canvasId, multiplier, isCrashed, isAviator) {
         const canvas = document.getElementById(canvasId); if(!canvas) return;
         const ctx = canvas.getContext('2d'); canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight;
@@ -269,37 +253,12 @@ canvas{display:block;width:100%;height:100%;}
 </script>
 </body>
 </html>
-import telebot
-import requests
+"""
 
-TOKEN = '8687319607:AAHmDLKX5hpU581-fOdFOn15SAf2eWvbhT0'
-ADMIN_ID = 7959829014
-# Yahan apne Telegram Group ka ID dalein, taaki wahan message jaye (jaise -100123456789)
-GROUP_ID = None  
+@app.route('/')
+def home():
+    return render_template_string(HTML_PAGE)
 
-GAME_LINK = 'https://crashsuper100x.onrender.com'
-
-bot = telebot.TeleBot(TOKEN)
-
-@bot.message_handler(commands=['signal'])
-def send_signal(message):
-    if message.from_user.id != ADMIN_ID: return
-    try:
-        res = requests.get(f'{GAME_LINK}/api/game_state/crash')
-        data = res.json()
-        if data['status'] == 'waiting':
-            text = f"🚀 **VIP CRASH SIGNAL** 🚀\n\n🎯 Next Crash: **{data['next_crash']}x**\n⏳ Time left: {data['time_left']}s\n\n[🎮 Play Now]({GAME_LINK})"
-            
-            # Agar GROUP_ID dali hui hai, toh seedha Group me message bhejega
-            if GROUP_ID:
-                bot.send_message(GROUP_ID, text, parse_mode="Markdown", disable_web_page_preview=True)
-                bot.reply_to(message, "✅ VIP Signal Group me bhej diya gaya hai!")
-            else:
-                bot.reply_to(message, text, parse_mode="Markdown")
-        else:
-            bot.reply_to(message, "⏳ Game abhi ud rahi hai. Agle round ka wait karein!")
-    except Exception as e:
-        bot.reply_to(message, "⚠ Server Error! (Website link check karein)")
-
-print("Group VIP Bot is Running...")
-bot.polling()
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+                    
