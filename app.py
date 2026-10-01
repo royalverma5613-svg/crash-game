@@ -1,17 +1,24 @@
 from flask import Flask, jsonify, render_template_string, request
-import random, time, threading, sqlite3, smtplib
+import random, time, threading, sqlite3, smtplib, os
 from email.mime.text import MIMEText
 
 app = Flask(__name__)
 
 # ==========================================
-# 📧 EMAIL OTP CONFIGURATION (Yahan apna Gmail aur App Password dalein)
+# 📧 EMAIL OTP CONFIGURATION 
 # ==========================================
-SENDER_EMAIL = "your_email@gmail.com"  
+SENDER_EMAIL = "your_email@gmail.com"  # Yahan apna Gmail dalein
 SENDER_PASSWORD = "mfoq cjkt eyub tuvu"  
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, 'users.db')
+HTML_PATH = os.path.join(BASE_DIR, 'index.html')
+
+def get_db():
+    return sqlite3.connect(DB_PATH)
+
 def init_db():
-    conn = sqlite3.connect('users.db')
+    conn = get_db()
     conn.execute('CREATE TABLE IF NOT EXISTS users (email TEXT PRIMARY KEY, password TEXT, uid TEXT, ref TEXT, balance REAL)')
     conn.commit(); conn.close()
 init_db()
@@ -52,7 +59,7 @@ threading.Thread(target=game_thread, args=("aviator", 8.0), daemon=True).start()
 def send_otp():
     email = request.json.get('email')
     if not email or "@" not in email: return jsonify({"status":"error", "message":"Invalid email"})
-    conn = sqlite3.connect('users.db')
+    conn = get_db()
     if conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone():
         conn.close(); return jsonify({"status":"error", "message":"Email registered!"})
     conn.close()
@@ -61,7 +68,7 @@ def send_otp():
         msg = MIMEText(f"Your Super100x OTP is: {otp}"); msg['Subject']='Super100x OTP'; msg['From']=SENDER_EMAIL; msg['To']=email
         server = smtplib.SMTP('smtp.gmail.com', 587); server.starttls(); server.login(SENDER_EMAIL, SENDER_PASSWORD); server.send_message(msg); server.quit()
         return jsonify({"status":"success", "message":"OTP sent!"})
-    except Exception as e: return jsonify({"status":"error", "message":"Failed to send OTP."})
+    except Exception as e: return jsonify({"status":"error", "message":"Failed to send OTP. SMTP error."})
 
 @app.route('/api/verify_otp', methods=['POST'])
 def verify_otp():
@@ -71,14 +78,14 @@ def verify_otp():
 @app.route('/api/register', methods=['POST'])
 def register_user():
     e, p, r = request.json.get('email'), request.json.get('password'), request.json.get('ref', '')
-    uid = str(random.randint(1000000, 9999999)); conn = sqlite3.connect('users.db')
+    uid = str(random.randint(1000000, 9999999)); conn = get_db()
     conn.execute("INSERT INTO users (email, password, uid, ref, balance) VALUES (?,?,?,?,?)", (e, p, uid, r, 50.0))
     conn.commit(); conn.close(); otp_storage.pop(e, None)
     return jsonify({"status":"success", "message":"Created!", "uid":uid, "balance":50.0})
 
 @app.route('/api/login', methods=['POST'])
 def login_user():
-    u = sqlite3.connect('users.db').execute("SELECT uid, balance FROM users WHERE email=? AND password=?", (request.json.get('email'), request.json.get('password'))).fetchone()
+    u = get_db().execute("SELECT uid, balance FROM users WHERE email=? AND password=?", (request.json.get('email'), request.json.get('password'))).fetchone()
     return jsonify({"status":"success", "message":"Login success!", "uid":u[0], "balance":u[1]}) if u else jsonify({"status":"error", "message":"Wrong details"})
 
 @app.route('/api/game_state/<g>')
@@ -89,9 +96,11 @@ def get_state(g):
 
 @app.route('/')
 def home():
-    # Yeh file ab 'index.html' se design uthayegi
-    with open('index.html', 'r', encoding='utf-8') as f:
-        return render_template_string(f.read())
+    try:
+        with open(HTML_PATH, 'r', encoding='utf-8') as f:
+            return render_template_string(f.read())
+    except Exception as e:
+        return f"<h3 style='color:red;'>Error: index.html nahi mili!</h3><p>Ensure file exists at: {HTML_PATH}</p><p>Technical Error: {str(e)}</p>"
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
