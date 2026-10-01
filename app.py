@@ -7,7 +7,7 @@ app = Flask(__name__)
 # ==========================================
 # 📧 EMAIL OTP CONFIGURATION 
 # ==========================================
-SENDER_EMAIL = "your_email@gmail.com"  # Yahan apna Gmail dalein
+SENDER_EMAIL = "fopaquxij92@gmail.com"  # Yahan apna Gmail dalein
 SENDER_PASSWORD = "mfoq cjkt eyub tuvu"  
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
