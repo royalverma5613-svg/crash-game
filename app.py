@@ -297,4 +297,14 @@ body{margin:0;font-family:Arial,sans-serif;background-color:#f4f5f7;color:#333;o
             document.getElementById(g+'-history').innerHTML = data.history.map(v=>`<div class="pill ${v<2?'red':(v<5?'blue':'green')}">${v}x</div>`).join('');
             document.getElementById(g+'-display').innerText = data.status==='waiting' ? data.time_left.toFixed(1)+'s' : data.multiplier.toFixed(2)+'x';
             drawGraph(g+'Canvas', data.status==='waiting'?1.0:data.multiplier, data.status==='crashed', g==='aviator');
-            docu
+                        document.getElementById(g+'-players').innerText = data.active_users; 
+            document.getElementById(g+'-totalamt').innerText = '₹' + data.total_amount;
+            document.getElementById(g+'-orders').innerHTML = data.fake_bets.map(b=>`<div class="bet-row"><div>${b.uid}</div><div>₹${b.bet}</div><div>${b.cashed_out?`<span class="text-green">${b.stopped_at}x</span>`:(data.status=='crashed'?`<span class="text-red">Crash</span>`:`-`)}</div><div>${b.cashed_out?`<span class="text-green">+₹${b.profit}</span>`:(data.status=='crashed'?`<span class="text-red">-₹${b.bet}</span>`:`-`)}</div></div>`).join('');
+        } catch(e){}
+    }
+    setInterval(()=>{ syncGame('crash'); syncGame('aviator'); }, 100);
+</script>
+</body>
+</html>
+
+            
